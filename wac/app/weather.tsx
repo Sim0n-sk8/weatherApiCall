@@ -14,9 +14,14 @@ interface CurrentWeather {
   time: Date;
 }
 
+interface HourlyTemp {
+  time: string;
+  temp: number;
+}
+
 const Weather: React.FC = () => {
   const [weather, setWeather] = useState<CurrentWeather | null>(null);
-  const [hourlyTemps, setHourlyTemps] = useState<{ time: string; temp: number }[]>([]);
+  const [hourlyTemps, setHourlyTemps] = useState<HourlyTemp[]>([]);
 
   useEffect(() => {
     const getWeather = async () => {
@@ -42,7 +47,8 @@ const Weather: React.FC = () => {
 
       const url = 'https://api.open-meteo.com/v1/forecast';
       const responses = await fetchWeatherApi(url, params);
-      const response = responses[0];
+      const response = responses?.[0];
+      if (!response) return;
 
       const current = response.current();
       const hourly = response.hourly();
@@ -50,6 +56,7 @@ const Weather: React.FC = () => {
 
       const utcOffsetSeconds = response.utcOffsetSeconds();
 
+      // Safe access for current weather variables
       const data: CurrentWeather = {
         temperature: current.variables(1)?.value() ?? 0,
         precipitation: current.variables(0)?.value() ?? 0,
@@ -59,11 +66,26 @@ const Weather: React.FC = () => {
         time: new Date((Number(current.time()) + utcOffsetSeconds) * 1000),
       };
 
-      // Map hourly temperatures for chart
-      const hourlyData = hourly.variables(0)?.valuesArray().map((t, i) => ({
+      // Safe mapping for hourly temperatures
+     // Safe mapping for hourly temperatures
+const tempVar = hourly.variables(0);
+let hourlyData: HourlyTemp[] = [];
+
+if (tempVar) {
+  const rawValues = tempVar.valuesArray();
+  if (rawValues) { // check for null
+    const values = Array.from(rawValues); // now safe
+    hourlyData = values.map((t, i) => {
+      const timeSeconds = Number(hourly.time()) + i * hourly.interval() + utcOffsetSeconds;
+      const date = new Date(timeSeconds * 1000);
+      return {
         temp: t,
-        time: new Date(Number(hourly.time()) + i * hourly.interval() * 1000 + utcOffsetSeconds * 1000).getHours() + ':00'
-      })) ?? [];
+        time: date.getHours() + ':00',
+      };
+    });
+  }
+}
+
 
       setWeather(data);
       setHourlyTemps(hourlyData);
@@ -72,7 +94,9 @@ const Weather: React.FC = () => {
     getWeather();
   }, []);
 
-  if (!weather) return <p className="text-center mt-10 text-xl animate-pulse">Loading weather...</p>;
+  if (!weather) {
+    return <p className="text-center mt-10 text-xl animate-pulse">Loading weather...</p>;
+  }
 
   return (
     <motion.div
